@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>Cinemastar</title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-/Y6pD6FV/Vv2HJnA6t+vslU6fwYXjCFtcEpHbNJ0lyAFsXTsjBbfaDjzALeQsN6M" crossorigin="anonymous">
+    <script src="https://unpkg.com/vue"></script>
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
+    <link href="//vjs.zencdn.net/5.19/video-js.min.css" rel="stylesheet">
+    <script src="//vjs.zencdn.net/5.19/video.min.js"></script>
+
+    <style>
+    body {
+      padding-top: 54px;
+    }
+
+    @media (min-width: 992px) {
+      body {
+        padding-top: 56px;
+      }
+    }
+    #menu,
+    #menu ul {
+      list-style-type: none;
+      padding-left: 20px;
+    }
+    #menu li {
+      line-height: 1.7em;
+    }
+    #player {
+      padding: 10px 0px;
+    }
+    </style>
+
+    <script language="javascript">
+    $(document).ready(function(){
+      var mixin = {
+        ajax:{
+          data:{
+            error:0, //エラー状態
+            loading:true, //通信状態
+            result:{}, //取得結果格納用
+            model: null
+          },
+          methods:{
+            getData:function(){
+              var _this = this;
+              _this.loading = true;
+              $.ajax({
+                url: _this.request.url,
+                type: 'GET',
+                dataType: 'json',
+                timeout : 30000,
+              })
+              .done(function(response) {
+                //結果をresultに格納、各種状態管理用の変数を完了ステータスに変更
+                _this.error = 0;
+                _this.loading = false;
+                if (_this.model) {
+                  Vue.set(_this.model, 'children', response);
+                } else {
+                  Vue.set(_this, 'result', response);
+                }
+              })
+              .fail(function(error) {
+                //通信エラー時の再試行。
+                //再試行回数が指定数に達した場合は状態管理用の変数を更新しAjaxを停止
+                if(_this.error <= 5){
+                  _this.error++;
+                  _this.getData();
+                }else{
+                  _this.error = true;
+                  _this.loading = false;
+                }
+              });
+            }
+          },
+          mounted:function(){
+            //Ajaxを実行
+            this.getData();
+          }
+        }
+      }
+
+     Vue.component('movie', {
+       template: '#movie-template',
+       props: {
+         model: Object
+       },
+       methods: {
+         player: function() {
+           app.$emit("play", this.model);
+         },
+       }
+     });
+     Vue.component('item', {
+       template: '#item-template',
+       props: {
+         model: Object
+       },
+       computed: {
+         isChild: function() {
+           return this.model.children &&
+                    this.model.children.length
+         }
+       },
+       data: function () {
+         return {
+           open: false
+         }
+       },
+       methods: {
+         toggle: function () {
+           app.$emit("preload", this.model.path);
+           app.$emit("remove");
+
+           mixin.ajax.methods.request = { url: '/category' + this.model.path + "/"};
+           mixin.ajax.methods.model = this.model;
+           mixin.ajax.methods.getData();
+         }
+        }
+      });
+      Vue.component('player', {
+        template: "#player-template",
+        props: {
+          model: Object
+        },
+        computed: {
+          isContent: function() {
+            return this.model && this.model.path
+          }
+        },
+      });
+
+      var app = new Vue();
+
+      var menu = new Vue({
+        el: "#menu",
+        mixins: [mixin.ajax],
+        data: {
+          request: {
+            url: '/category/'
+          },
+        }
+      })
+
+      var movie = new Vue({
+        el: "#content",
+        mixins: [mixin.ajax],
+        data: {
+          request: {
+            url: '/latest'
+          },
+        },
+        created: function() {
+          app.$on("preload", this.preload)
+        },
+        methods: {
+          preload: function(path) {
+            this.request.url = '/file' + path;
+            this.getData();
+          },
+        }
+      })
+
+      var player = new Vue({
+        el: "#player",
+        data: {
+          result: {}
+        },
+        created: function() {
+          app.$on("play", this.play);
+        },
+        methods: {
+          play: function(model) {
+            Vue.set(this, 'result', {path: "/static" + model.path});
+            Vue.nextTick(function(){
+              var player = videojs('my-player', {}, function onPlayerReady() {
+                videojs.log('your player is ready!');
+                this.play();
+              });
+              player.requestFullscreen();
+            });
+          },
+        }
+      });
+    });
+    </script>
+    <script type="text/x-template" id="item-template">
+      <li class="menu-item" :id="model.name">
+        <a
+          href="#"
+          @click="toggle">
+          {{model.name}}
+        </a>
+        <ul class="menu" v-if="isChild">
+          <item
+            class="item"
+            v-for="m in model.children"
+            :key="m.name"
+            :model="m">
+          </item>
+        </ul>
+      </li>
+    </script>
+    <script type="text/x-template" id="movie-template">
+      <div class="col-lg-4 col-md-6 mb-4" :id="model.name" @click="player">
+        <div class="card h-100">
+          <a href="#"><img class="card-img-top" :src="model.thumbnail" alt=""></a>
+          <div class="card-body">
+            <h6 class="card-title">
+              <a href="#">{{ model.name }}</a>
+            </h6>
+          </div>
+        </div>
+      </div>
+    </script>
+    <script type="text/x-template" id="player-template">
+      <video
+        v-if="isContent"
+        v-show="isContent"
+        id="my-player"
+        class="video-js vjs-16-9"
+        controls
+        preload="none"
+        data-setup='{}'
+        :src="model.path">
+      </video>
+    </script>
+  </head>
+
+  <body>
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+      <div class="container">
+        <a class="navbar-brand" href="/">Cinemastar</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarResponsive">
+          <ul class="navbar-nav ml-auto">
+            <li class="nav-item active">
+              <a class="nav-link" href="/">Latest
+                <span class="sr-only">(current)</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Page Content -->
+    <div class="container">
+      <div class="row">
+        <div class="col-lg-3">
+          <h3 class="my-2">Menu</h3>
+          <ul id="menu">
+            <item
+              v-for="m in result"
+              :key="m.name"
+              class="item"
+              :model="m">
+            </item>
+          </ul>
+        </div>
+        <!-- /.col-lg-3 -->
+
+        <div class="col-lg-9">
+
+          <div class="row" id="player">
+            <player
+              class="player"
+              :model="result">
+            </player>
+          </div>
+          <div class="row" id="content">
+            <movie
+              v-for="m in result"
+              :key="m.name"
+              class="movie"
+              :model="m">
+            </movie>
+          </div>
+          <!-- /.row -->
+
+        </div>
+        <!-- /.col-lg-9 -->
+
+      </div>
+      <!-- /.row -->
+
+    </div>
+    <!-- /.container -->
+
+    <!-- Footer -->
+    <footer class="py-5 bg-dark">
+      <div class="container">
+        <p class="m-0 text-center text-white">Copyright &copy; Your Website 2017</p>
+      </div>
+      <!-- /.container -->
+    </footer>
+  </body>
+
+</html>
