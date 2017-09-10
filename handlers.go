@@ -15,10 +15,14 @@ import (
 	"log"
 	"regexp"
 	"strings"
+        "time"
 )
 
 type FileInfos []os.FileInfo
 type ByName struct{ FileInfos }
+
+var latest string
+var last = time.Now()
 
 func (fi ByName) Len() int {
 	return len(fi.FileInfos)
@@ -67,16 +71,22 @@ func MovieContent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 }
 
 func Latest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	cmd := "find " + base + " -type f -print0 | xargs -0 ls --full-time | sort -k6,7 -r | head -n 100 | rev | cut -f1 -d ' ' | rev"
-	out, err := exec.Command("sh", "-c", cmd).Output()
-	if err != nil {
+
+        duration := time.Since(last).Seconds()
+        if duration < 10 || duration > 1800 {
+            last = time.Now()
+	    cmd := "find " + base + " -path " + base + "thumbnail -prune -o -path " + base + "t -prune -o -type f -not -name '*.html' -print0 | xargs -0 ls --full-time | sort -k6,7 -r | head -n 100 | rev | cut -f1 -d ' ' | rev"
+            log.Print(cmd)
+	    out, err := exec.Command("sh", "-c", cmd).Output()
+	    if err != nil {
 		fmt.Errorf("Latest Dead: %s\n", err)
 		os.Exit(1)
-	}
-
+	    }
+            latest = string(out)
+        }
 	var movies Movies
 	rep := regexp.MustCompile(`\.[^\.]+$`)
-	for _, v := range regexp.MustCompile("\r\n|\n\r|\n|\r").Split(string(out), -1) {
+	for _, v := range regexp.MustCompile("\r\n|\n\r|\n|\r").Split(latest, -1) {
 		fullpath := string(v)
 		if ignoreFile(fullpath) {
 			continue
@@ -91,8 +101,7 @@ func Latest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			isDir := fileinfo.IsDir()
 			filePath := strings.Replace(fullpath, base, "/", 1)
 
-			var thumbnail = strings.Replace(strings.Replace(fullpath, "_", "__", -1), "/", "_", -1)
-			thumbnail = "/static/thumbnail/" + thumbnail + ".jpg"
+			thumbnail := "/static/t/" + filePath + ".jpg"
 			movies = append(movies, Movie{Name: name, Directory: isDir, Due: modTime, Path: filePath, Thumbnail: thumbnail})
 		}
 	}
@@ -128,8 +137,7 @@ func MovieIndex(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		filePath := basePath + "/" + fileName
 
 		if !isDir {
-			var thumbnail = strings.Replace(strings.Replace(arg+fileName, "_", "__", -1), "/", "_", -1)
-			thumbnail = "/static/thumbnail/" + thumbnail + ".jpg"
+			thumbnail := "/static/t/" + filePath + ".jpg"
 			movies = append(movies, Movie{Name: name, Directory: isDir, Due: modTime, Path: filePath, Thumbnail: thumbnail})
 		}
 	}
