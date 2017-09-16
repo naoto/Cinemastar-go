@@ -22,6 +22,7 @@ func main() {
 	router.GET("/file/*filepath", MovieIndex)
 	router.GET("/category/*filepath", MovieCategoryIndex)
 	router.GET("/static/*filepath", MovieContent)
+        router.GET("/search", MovieSearch)
 
 	log.Fatal(http.ListenAndServe(":"+port, router))
 }

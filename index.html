@@ -48,7 +48,10 @@
             error:0, //エラー状態
             loading:true, //通信状態
             result:{}, //取得結果格納用
-            model: null
+            model: null,
+            request: {
+              url: null
+            }
           },
           methods:{
             getData:function(){
@@ -85,7 +88,9 @@
           },
           mounted:function(){
             //Ajaxを実行
-            this.getData();
+            if (this.request.url != null) {
+              this.getData();
+            }
           }
         }
       }
@@ -162,11 +167,26 @@
         },
         created: function() {
           app.$on("preload", this.preload)
+          app.$on("search", this.search)
         },
         methods: {
           preload: function(path) {
             this.request.url = '/file' + path;
             this.getData();
+          },
+          search: function(word) {
+            this.request.url = '/search?name=' + word;
+            this.getData();
+          },
+        }
+      })
+
+      var search = new Vue({
+        el: "#search",
+        mixins: [mixin.ajax],
+        methods: {
+          onSubmit: function() {
+            app.$emit("search", $('#searchWord').val());
           },
         }
       })
@@ -252,6 +272,12 @@
               <a class="nav-link" href="/">Latest
                 <span class="sr-only">(current)</span>
               </a>
+            </li>
+            <li class="nav-item">
+              <form class="form-inline" id="search" v-on:submit.prevent="onSubmit">
+                 <input type="text" id="searchWord" class="form-control" placeholder="search">&nbsp;
+                 <button type="submit" class="form-contorl btn btn-outline-success">Search</button>
+              </form>
             </li>
           </ul>
         </div>

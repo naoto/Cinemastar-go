@@ -70,6 +70,43 @@ func MovieContent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	http.ServeFile(w, r, arg)
 }
 
+func MovieSearch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+        queryValue := r.URL.Query()
+        query := queryValue.Get("name")
+        cmd := "find " + base + " -path " + base + "thumbnail -prune -o -path " + base + "t -prune -o -type f -not -name '*.html' -name '*" + query + "*' -print0 | xargs -0 ls --full-time | sort -k6,7 -r | head -n 100 | rev | cut -f1 -d ' ' | rev"
+        log.Print(cmd)
+	out, err := exec.Command("sh", "-c", cmd).Output()
+	if err != nil {
+	    fmt.Errorf("Latest Dead: %s\n", err)
+	    os.Exit(1)
+	}
+        find := string(out)
+	var movies Movies
+	rep := regexp.MustCompile(`\.[^\.]+$`)
+	for _, v := range regexp.MustCompile("\r\n|\n\r|\n|\r").Split(find, -1) {
+		fullpath := string(v)
+		if ignoreFile(fullpath) {
+			continue
+		}
+
+		file, err := os.Open(fullpath)
+		if err == nil {
+			fileinfo, _ := file.Stat()
+			fileName := fileinfo.Name()
+			name := strings.Replace(rep.ReplaceAllString(fileName, ""), "_", " ", -1)
+			modTime := fileinfo.ModTime()
+			isDir := fileinfo.IsDir()
+			filePath := strings.Replace(fullpath, base, "/", 1)
+
+			thumbnail := "/static/t/" + filePath + ".jpg"
+			movies = append(movies, Movie{Name: name, Directory: isDir, Due: modTime, Path: filePath, Thumbnail: thumbnail})
+		}
+	}
+	if err := json.NewEncoder(w).Encode(movies); err != nil {
+		panic(err)
+	}
+}
+
 func Latest(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
         duration := time.Since(last).Seconds()
